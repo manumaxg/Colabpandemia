@@ -22,9 +22,9 @@ require("lightgbm")
 
 #Parametros del script
 PARAM  <- list()
-PARAM$experimento <- "FE6317"
+PARAM$experimento <- "FE6310-exp04"
 
-PARAM$exp_input  <- "DR6217"
+PARAM$exp_input  <- "DR6210-exp04"
 
 PARAM$lag1  <- TRUE
 PARAM$lag2  <- TRUE
@@ -54,16 +54,11 @@ PARAM$RandomForest$num.trees  <- 20
 PARAM$RandomForest$max.depth  <-  4
 PARAM$RandomForest$min.node.size  <- 1000
 PARAM$RandomForest$mtry  <- 40
-PARAM$RandomForest$semilla  <- 158771    # cambiar por la propia semilla
+PARAM$RandomForest$semilla  <- 355537    # cambiar por la propia semilla
 
 PARAM$CanaritosAsesinos$ratio  <- 0.0        #varia de 0.0 a 2.0, si es 0.0 NO se activan
-PARAM$CanaritosAsesinos$desvios  <- 4.0      #desvios estandar de la media, para el cutoff
-PARAM$CanaritosAsesinos$semilla  <- 616523   # cambiar por la propia semilla
-
-PARAM$home  <- "~/buckets/b1/"
+PARAM$CanaritosAsesinos$semilla  <- 355537   # cambiar por la propia semilla
 # FIN Parametros del script
-
-OUTPUT  <- list()
 
 #------------------------------------------------------------------------------
 
@@ -72,12 +67,7 @@ options(error = function() {
   options(error = NULL);
   stop("exiting after script error")
 })
-#------------------------------------------------------------------------------
 
-GrabarOutput  <- function()
-{
-  write_yaml( OUTPUT, file= "output.yml" )   # grabo OUTPUT
-}
 #------------------------------------------------------------------------------
 #se calculan para los 6 meses previos el minimo, maximo y tendencia calculada con cuadrados minimos
 #la formula de calculo de la tendencia puede verse en https://stats.libretexts.org/Bookshelves/Introductory_Statistics/Book%3A_Introductory_Statistics_(Shafer_and_Zhang)/10%3A_Correlation_and_Regression/10.04%3A_The_Least_Squares_Regression_Line
@@ -202,18 +192,15 @@ AgregaVarRandomForest  <- function( num.trees, max.depth, min.node.size, mtry, s
   campos_buenos  <- setdiff( colnames(dataset), c("clase_ternaria" ) )
 
   dataset_rf  <- copy( dataset[ , campos_buenos, with=FALSE] )
-  set.seed( semilla, kind= "L'Ecuyer-CMRG")
   azar  <- runif( nrow(dataset_rf) )
   dataset_rf[ , entrenamiento := as.integer( foto_mes>= 202101 &  foto_mes<= 202103 & ( clase01==1 | azar < 0.10 )) ]
 
   #imputo los nulos, ya que ranger no acepta nulos
   #Leo Breiman, ¿por que le temias a los nulos?
-  set.seed( semilla, kind= "L'Ecuyer-CMRG")
   dataset_rf  <- na.roughfix( dataset_rf )
 
   campos_buenos  <- setdiff( colnames(dataset_rf), c("clase_ternaria","entrenamiento" ) )
-
-  set.seed( semilla, kind= "L'Ecuyer-CMRG")
+  set.seed( semilla )
   modelo  <- ranger( formula= "clase01 ~ .",
                      data=  dataset_rf[ entrenamiento==1L, campos_buenos, with=FALSE  ] ,
                      classification= TRUE,
@@ -221,9 +208,7 @@ AgregaVarRandomForest  <- function( num.trees, max.depth, min.node.size, mtry, s
                      num.trees=     num.trees,
                      max.depth=     max.depth,
                      min.node.size= min.node.size,
-                     mtry=          mtry,
-                     seed=          semilla,
-                     num.threads=   1
+                     mtry=          mtry
                    )
 
   rfhojas  <- predict( object= modelo,
@@ -282,17 +267,15 @@ fganancia_lgbm_meseta  <- function(probs, datos)
 
 GVEZ <- 1
 
-CanaritosAsesinos  <- function( canaritos_ratio=0.2, canaritos_desvios=3.0, canaritos_semilla=999983 )
+CanaritosAsesinos  <- function( canaritos_ratio=0.2, canaritos_semilla=999983 )
 {
   gc()
   dataset[ , clase01:= ifelse( clase_ternaria=="CONTINUA", 0, 1 ) ]
 
-  set.seed( canaritos_semilla, kind= "L'Ecuyer-CMRG")
   for( i  in 1:(ncol(dataset)*canaritos_ratio))  dataset[ , paste0("canarito", i ) :=  runif( nrow(dataset))]
 
   campos_buenos  <- setdiff( colnames(dataset), c("clase_ternaria","clase01", "foto_mes" ) )
 
-  set.seed( canaritos_semilla, kind= "L'Ecuyer-CMRG")
   azar  <- runif( nrow(dataset) )
   dataset[ , entrenamiento := foto_mes>= 202101 &  foto_mes<= 202103  & ( clase01==1 | azar < 0.10 ) ]
 
@@ -327,10 +310,8 @@ CanaritosAsesinos  <- function( canaritos_ratio=0.2, canaritos_desvios=3.0, cana
                  feature_fraction= 1.0,   #lo seteo en 1 para que las primeras variables del dataset no se vean opacadas
                  min_data_in_leaf= 260,
                  num_leaves= 60,
-                 early_stopping_rounds= 200,
-                 num_threads= 1 )
+                 early_stopping_rounds= 200 )
 
-  set.seed( canaritos_semilla, kind= "L'Ecuyer-CMRG")
   modelo  <- lgb.train( data= dtrain,
                         valids= list( valid= dvalid ),
                         eval= fganancia_lgbm_meseta,
@@ -346,8 +327,7 @@ CanaritosAsesinos  <- function( canaritos_ratio=0.2, canaritos_desvios=3.0, cana
 
   GVEZ  <<- GVEZ + 1
 
-  umbral  <- tb_importancia[ Feature %like% "canarito", 
-                             median(pos) +  canaritos_desvios*sd(pos) ]  #Atencion corto en la mediana mas desvios!!
+  umbral  <- tb_importancia[ Feature %like% "canarito", median(pos) + 2*sd(pos) ]  #Atencion corto en la mediana mas DOS desvios!!
 
   col_utiles  <- tb_importancia[ pos < umbral & !( Feature %like% "canarito"),  Feature ]
   col_utiles  <-  unique( c( col_utiles,  c("numero_de_cliente","foto_mes","clase_ternaria","mes") ) )
@@ -359,10 +339,9 @@ CanaritosAsesinos  <- function( canaritos_ratio=0.2, canaritos_desvios=3.0, cana
 #------------------------------------------------------------------------------
 #------------------------------------------------------------------------------
 #Aqui empieza el programa
-OUTPUT$PARAM  <- PARAM
-OUTPUT$time$start  <- format(Sys.time(), "%Y%m%d %H%M%S")
+PARAM$stat$time_start  <- format(Sys.time(), "%Y%m%d %H%M%S")
 
-setwd( PARAM$home )
+setwd( "~/buckets/b1/" )
 
 #cargo el dataset donde voy a entrenar
 #esta en la carpeta del exp_input y siempre se llama  dataset.csv.gz
@@ -377,7 +356,6 @@ colnames( dataset )[ which( !( sapply( dataset, typeof) %in%  c("integer","doubl
 dir.create( paste0( "./exp/", PARAM$experimento, "/"), showWarnings = FALSE )
 setwd(paste0( "./exp/", PARAM$experimento, "/"))   #Establezco el Working Directory DEL EXPERIMENTO
 
-GrabarOutput()
 write_yaml( PARAM, file= "parametros.yml" )   #escribo parametros utilizados
 
 #--------------------------------------
@@ -392,7 +370,6 @@ setorder( dataset, numero_de_cliente, foto_mes )
 if( PARAM$lag1 )
 {
   #creo los campos lags de orden 1
-  OUTPUT$lag1$ncol_antes  <- ncol(dataset)
   dataset[ , paste0( cols_lagueables, "_lag1") := shift(.SD, 1, NA, "lag"),
              by= numero_de_cliente,
              .SDcols= cols_lagueables ]
@@ -402,16 +379,12 @@ if( PARAM$lag1 )
   {
     dataset[ , paste0(vcol, "_delta1") := get(vcol)  - get(paste0( vcol, "_lag1"))  ]
   }
-
-  OUTPUT$lag1$ncol_despues  <- ncol(dataset)
-  GrabarOutput()
 }
 
 
 if( PARAM$lag2 )
 {
   #creo los campos lags de orden 2
-  OUTPUT$lag2$ncol_antes  <- ncol(dataset)
   dataset[ , paste0( cols_lagueables, "_lag2") := shift(.SD, 2, NA, "lag"),
              by= numero_de_cliente,
              .SDcols= cols_lagueables ]
@@ -421,16 +394,12 @@ if( PARAM$lag2 )
   {
     dataset[ , paste0(vcol, "_delta2") := get(vcol)  - get(paste0( vcol, "_lag2"))  ]
   }
-
-  OUTPUT$lag2$ncol_despues  <- ncol(dataset)
-  GrabarOutput()
 }
 
 
 if( PARAM$lag3 )
 {
   #creo los campos lags de orden 3
-  OUTPUT$lag3$ncol_antes  <- ncol(dataset)
   dataset[ , paste0( cols_lagueables, "_lag3") := shift(.SD, 3, NA, "lag"),
              by= numero_de_cliente,
              .SDcols= cols_lagueables ]
@@ -440,9 +409,6 @@ if( PARAM$lag3 )
   {
     dataset[ , paste0(vcol, "_delta3") := get(vcol)  - get(paste0( vcol, "_lag3"))  ]
   }
-
-  OUTPUT$lag3$ncol_despues  <- ncol(dataset)
-  GrabarOutput()
 }
 
 
@@ -455,7 +421,6 @@ setorder( dataset, numero_de_cliente, foto_mes )
 
 if( PARAM$Tendencias1$run )
 {
-  OUTPUT$TendenciasYmuchomas1$ncol_antes  <- ncol(dataset)
   TendenciaYmuchomas( dataset,
                       cols= cols_lagueables,
                       ventana=   PARAM$Tendencias1$ventana,      # 6 meses de historia
@@ -465,15 +430,11 @@ if( PARAM$Tendencias1$run )
                       promedio=  PARAM$Tendencias1$promedio,
                       ratioavg=  PARAM$Tendencias1$ratioavg,
                       ratiomax=  PARAM$Tendencias1$ratiomax  )
-
-  OUTPUT$TendenciasYmuchomas1$ncol_despues  <- ncol(dataset)
-  GrabarOutput()
 }
 
 
 if( PARAM$Tendencias2$run )
 {
-  OUTPUT$TendenciasYmuchomas2$ncol_antes  <- ncol(dataset)
   TendenciaYmuchomas( dataset,
                       cols= cols_lagueables,
                       ventana=   PARAM$Tendencias2$ventana,      # 6 meses de historia
@@ -483,9 +444,6 @@ if( PARAM$Tendencias2$run )
                       promedio=  PARAM$Tendencias2$promedio,
                       ratioavg=  PARAM$Tendencias2$ratioavg,
                       ratiomax=  PARAM$Tendencias2$ratiomax  )
-
-  OUTPUT$TendenciasYmuchomas2$ncol_despues  <- ncol(dataset)
-  GrabarOutput()
 }
 
 #------------------------------------------------------------------------------
@@ -493,15 +451,12 @@ if( PARAM$Tendencias2$run )
 
 if( PARAM$RandomForest$run )
 {
-  OUTPUT$AgregaVarRandomForest$ncol_antes  <- ncol(dataset)
   AgregaVarRandomForest( num.trees= PARAM$RandomForest$num.trees,
                          max.depth= PARAM$RandomForest$max.depth,
                          min.node.size= PARAM$RandomForest$min.node.size,
                          mtry= PARAM$RandomForest$mtry,
                          semilla= PARAM$RandomForest$semilla)
 
-  OUTPUT$AgregaVarRandomForest$ncol_despues  <- ncol(dataset)
-  GrabarOutput()
   gc()
 }
 
@@ -512,13 +467,10 @@ if( PARAM$RandomForest$run )
 
 if( PARAM$CanaritosAsesinos$ratio > 0.0)
 {
-  OUTPUT$CanaritosAsesinos$ncol_antes  <- ncol(dataset)
+  ncol( dataset )
   CanaritosAsesinos( canaritos_ratio= PARAM$CanaritosAsesinos$ratio,
-                     canaritos_desvios= PARAM$CanaritosAsesinos$desvios,
                      canaritos_semilla=  PARAM$CanaritosAsesinos$semilla )
-
-  OUTPUT$CanaritosAsesinos$ncol_despues  <- ncol(dataset)
-  GrabarOutput()
+  ncol( dataset )
 }
 
 #------------------------------------------------------------------------------
@@ -529,24 +481,8 @@ fwrite( dataset,
         sep= "," )
 
 #------------------------------------------------------------------------------
-
-# guardo los campos que tiene el dataset
-tb_campos  <- as.data.table( list( "pos" = 1:ncol(dataset),
-                                   "campo"= names(sapply( dataset, class )),
-                                   "tipo"= sapply( dataset, class ),
-                                   "nulos"= sapply( dataset,  function(x){ sum(is.na(x)) } ),
-                                   "ceros"= sapply( dataset,  function(x){ sum(x==0,na.rm= TRUE) } ) ))
-
-fwrite( tb_campos,
-        file= "dataset.campos.txt",
-        sep= "\t" )
-
-#------------------------------------------------------------------------------
-OUTPUT$dataset$ncol  <- ncol(dataset)
-OUTPUT$dataset$nrow  <- nrow(dataset)
-
-OUTPUT$time$end  <- format(Sys.time(), "%Y%m%d %H%M%S")
-GrabarOutput()
+PARAM$stat$time_end  <- format(Sys.time(), "%Y%m%d %H%M%S")
+write_yaml( PARAM, file= "parametros.yml" )   #escribo parametros utilizados
 
 #dejo la marca final
 cat( format(Sys.time(), "%Y%m%d %H%M%S"),"\n",

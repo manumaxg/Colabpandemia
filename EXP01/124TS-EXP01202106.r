@@ -16,9 +16,9 @@ require("yaml")
 
 #Parametros del script
 PARAM  <- list()
-PARAM$experimento <- "TS6416"
+PARAM$experimento <- "TS6421"
 
-PARAM$exp_input  <- "FE6316"
+PARAM$exp_input  <- "FE6321"
 
 # Corrida sin incluir la pandemia, para el 202106. 
 

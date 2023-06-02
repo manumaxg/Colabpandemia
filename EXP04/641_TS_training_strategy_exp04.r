@@ -16,30 +16,28 @@ require("yaml")
 
 #Parametros del script
 PARAM  <- list()
-PARAM$experimento <- "TS6417"
+PARAM$experimento <- "TS6410-exp04"
 
-PARAM$exp_input  <- "FE6317"
+PARAM$exp_input  <- "FE6310-exp04"
 
-# Corrida con toda la pandemia, salvo 202006. 
+# me salteo los meses duros de pandemia, pero llego hasta 201907 en training
+# entreno en 18 meses
+
 PARAM$future <- c( 202109 ) 
-
-PARAM$final_train <- c( 202107, 202106, 202105, 202104, 202103, 202102, 202101, 202012, 202011, 202010, 202009, 202008, 202007, 202005, 202004, 202003, 202002, 202001 )
-PARAM$train$training <- c( 202105, 202104, 202103, 202102, 202101, 202012, 202011, 202010, 202009, 202008, 202007, 202005, 202004, 202003, 202002, 202001, 201912, 201911 ) 
-
+PARAM$final_train <- c( 202107, 202106, 202105, 202104, 202103, 202102, 202101, 202012, 202011, 202010, 202009, 202008, 202006, 202007, 202005, 202002, 202001, 201912 )
+PARAM$train$training <- c( 202105, 202104, 202103, 202102, 202101, 202012, 202011, 202010, 202009,202008, 202007, 202006, 202005, 202002, 202001, 201912, 201911, 201910 ) 
 PARAM$train$validation <- c( 202106 )
 PARAM$train$testing <- c( 202107 )
-
 
 # Atencion  0.4  de  undersampling de la clase mayoritaria,  los CONTINUA
 PARAM$train$undersampling  <- 0.4   # 1.0 significa NO undersampling ,  0.1  es quedarse con el 10% de los CONTINUA
 
-PARAM$train$semilla  <- 158771  # cambiar por su propia semilla  !!!
+PARAM$train$semilla  <- 355537  # cambiar por su propia semilla  !!!
 
 PARAM$home  <- "~/buckets/b1/"
 # FIN Parametros del script
 
-# find unique foto_mes values in the dataset
-# unique( dataset$fecha_foto_mes )
+
 OUTPUT  <- list()
 
 # si training se establece identico a validation, entonces aguas abajo se hara Cross-Validation
